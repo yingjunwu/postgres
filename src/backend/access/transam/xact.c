@@ -1801,6 +1801,8 @@ AtSubCleanup_Memory(void)
 static void
 StartTransaction(void)
 {
+
+	yj_BeginProfiling();
 	TransactionState s;
 	VirtualTransactionId vxid;
 
@@ -1939,6 +1941,7 @@ StartTransaction(void)
 static void
 CommitTransaction(void)
 {
+	yj_EndProfiling();
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
 	bool		is_parallel_worker;
@@ -2676,6 +2679,8 @@ CleanupTransaction(void)
 void
 StartTransactionCommand(void)
 {
+	// printf("begin transaction\n");
+
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)
@@ -2746,6 +2751,7 @@ StartTransactionCommand(void)
 void
 CommitTransactionCommand(void)
 {
+	// printf("commit transaction\n");
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)

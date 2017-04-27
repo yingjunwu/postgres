@@ -24,6 +24,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
@@ -165,6 +166,20 @@ static bool RecoveryConflictPending = false;
 static bool RecoveryConflictRetryable = true;
 static ProcSignalReason RecoveryConflictReason;
 
+struct yj_TimePoint {
+	struct timeval time_;
+	char* point_name_;
+};
+
+#define yj_max_time_points_ 50
+
+// static const int yj_max_time_points_ = 50;
+static int yj_total_count_ = 0;
+static struct timeval yj_begin_time_;
+static struct yj_TimePoint yj_time_points_[yj_max_time_points_]; // at most 50 time points.
+static int yj_time_point_count_ = 0;
+static bool yj_is_profiling_ = false;
+
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
  * ----------------------------------------------------------------
@@ -188,6 +203,63 @@ static bool IsTransactionStmtList(List *pstmts);
 static void drop_unnamed_stmt(void);
 static void SigHupHandler(SIGNAL_ARGS);
 static void log_disconnections(int code, Datum arg);
+
+
+// static void yj_BeginProfiling();
+// static void yj_EndProfiling();
+// static bool yj_IsProfiling();
+// static void yj_InsertTimePoint(char* point_name);
+
+
+void yj_BeginProfiling() {
+  ++yj_total_count_;
+
+  gettimeofday(&yj_begin_time_, NULL);
+
+  yj_time_point_count_ = 0;
+  yj_is_profiling_ = true;
+}
+
+void yj_EndProfiling() {
+  if (yj_total_count_ % 2000 == 0) {
+    struct timeval end_time;
+
+    gettimeofday(&end_time, NULL);
+
+    printf("=================================\n");
+    for (int i = 0; i < yj_time_point_count_; ++i) {
+      double diff = (yj_time_points_[i].time_.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
+      diff += (yj_time_points_[i].time_.tv_usec - yj_begin_time_.tv_usec);
+
+      printf("point: %s, time: %lf us.\n", yj_time_points_[i].point_name_, diff);
+    }
+
+    double diff = (end_time.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
+    diff += (end_time.tv_usec - yj_begin_time_.tv_usec);
+
+    printf("yj time point count = %d\n", yj_time_point_count_);
+    printf("point: END, time: %lf us.\n", diff);
+
+  }
+  yj_time_point_count_ = 0;
+  yj_is_profiling_ = false;
+}
+
+bool yj_IsProfiling() {
+  return yj_is_profiling_;
+}
+
+void yj_InsertTimePoint(char* point_name) {
+	if (yj_time_point_count_ < 0 || yj_time_point_count_ > yj_max_time_points_) {
+		return;
+	}
+	struct yj_TimePoint *time_point = &(yj_time_points_[yj_time_point_count_]);
+
+	gettimeofday(&(time_point->time_), NULL);
+	time_point->point_name_ = point_name;
+
+  ++yj_time_point_count_;
+}
 
 
 /* ----------------------------------------------------------------
@@ -365,6 +437,7 @@ SocketBackend(StringInfo inBuf)
 	switch (qtype)
 	{
 		case 'Q':				/* simple query */
+			printf("simple query!!!\n");
 			doing_extended_query_message = false;
 			if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
 			{
@@ -393,6 +466,7 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 'F':				/* fastpath function call */
+			printf("fastpath function!!!\n");
 			doing_extended_query_message = false;
 			if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
 			{
@@ -420,6 +494,7 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 'X':				/* terminate */
+			printf("terminate!!!\n");
 			doing_extended_query_message = false;
 			ignore_till_sync = false;
 			break;
@@ -430,6 +505,7 @@ SocketBackend(StringInfo inBuf)
 		case 'E':				/* execute */
 		case 'H':				/* flush */
 		case 'P':				/* parse */
+			// printf("here!!!!!!!!!! qtype = %c\n", (char)qtype);
 			doing_extended_query_message = true;
 			/* these are only legal in protocol 3 */
 			if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
@@ -439,6 +515,7 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 'S':				/* sync */
+			// printf("sync!!!\n");
 			/* stop any active skip-till-Sync */
 			ignore_till_sync = false;
 			/* mark not-extended, so that a new error doesn't begin skip */
@@ -453,6 +530,7 @@ SocketBackend(StringInfo inBuf)
 		case 'd':				/* copy data */
 		case 'c':				/* copy done */
 		case 'f':				/* copy fail */
+			printf("copy!!!\n");
 			doing_extended_query_message = false;
 			/* these are only legal in protocol 3 */
 			if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
@@ -1883,7 +1961,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	/* Does the portal contain a transaction command? */
 	is_xact_command = IsTransactionStmtList(portal->stmts);
-
+	// printf("is transaction command? %d\n", (int)is_xact_command);
 	/*
 	 * We must copy the sourceText and prepStmtName into MessageContext in
 	 * case the portal is destroyed during finish_xact_command. Can avoid the
@@ -4058,6 +4136,10 @@ PostgresMain(int argc, char *argv[],
 		{
 			case 'Q':			/* simple query */
 				{
+					// printf("simple query...\n");
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("begin simple query");
+					}
 					const char *query_string;
 
 					/* Set statement_timestamp() */
@@ -4075,11 +4157,20 @@ PostgresMain(int argc, char *argv[],
 						exec_simple_query(query_string);
 
 					send_ready_for_query = true;
+					
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("end simple query");
+					}
 				}
 				break;
 
 			case 'P':			/* parse */
 				{
+					// printf("parse...\n");
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("begin parse");
+					}
+
 					const char *stmt_name;
 					const char *query_string;
 					int			numParams;
@@ -4105,10 +4196,22 @@ PostgresMain(int argc, char *argv[],
 
 					exec_parse_message(query_string, stmt_name,
 									   paramTypes, numParams);
+
+
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("end parse");
+					}
+
 				}
 				break;
 
 			case 'B':			/* bind */
+				// printf("bind...\n");
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin bind");
+				}
+
+
 				forbidden_in_wal_sender(firstchar);
 
 				/* Set statement_timestamp() */
@@ -4119,10 +4222,21 @@ PostgresMain(int argc, char *argv[],
 				 * the field extraction out-of-line
 				 */
 				exec_bind_message(&input_message);
+
+
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("end bind");
+				}
+
 				break;
 
 			case 'E':			/* execute */
+				// printf("execute...\n");
 				{
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("begin execute");
+					}
+
 					const char *portal_name;
 					int			max_rows;
 
@@ -4136,10 +4250,19 @@ PostgresMain(int argc, char *argv[],
 					pq_getmsgend(&input_message);
 
 					exec_execute_message(portal_name, max_rows);
+
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("end execute");
+					}
+
 				}
 				break;
 
 			case 'F':			/* fastpath function call */
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin fastpath");
+				}
+				// printf("fast path function call...\n");
 				forbidden_in_wal_sender(firstchar);
 
 				/* Set statement_timestamp() */
@@ -4170,10 +4293,17 @@ PostgresMain(int argc, char *argv[],
 				finish_xact_command();
 
 				send_ready_for_query = true;
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("end fastpath");
+				}
 				break;
 
 			case 'C':			/* close */
+				// printf("close...\n");
 				{
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("begin close");
+					}
 					int			close_type;
 					const char *close_target;
 
@@ -4213,10 +4343,20 @@ PostgresMain(int argc, char *argv[],
 
 					if (whereToSendOutput == DestRemote)
 						pq_putemptymessage('3');		/* CloseComplete */
+
+
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("end close");
+					}
 				}
 				break;
 
 			case 'D':			/* describe */
+				// printf("describe...\n");
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin describe");
+				}
+
 				{
 					int			describe_type;
 					const char *describe_target;
@@ -4246,18 +4386,41 @@ PostgresMain(int argc, char *argv[],
 							break;
 					}
 				}
+
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("end describe");
+				}
+
 				break;
 
 			case 'H':			/* flush */
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin flush");
+				}
+
 				pq_getmsgend(&input_message);
 				if (whereToSendOutput == DestRemote)
 					pq_flush();
+
+
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("end flush");
+				}
 				break;
 
 			case 'S':			/* sync */
+				// printf("sync...\n");
+
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin sync");
+				}
 				pq_getmsgend(&input_message);
 				finish_xact_command();
 				send_ready_for_query = true;
+
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("end sync");
+				}
 				break;
 
 				/*
@@ -4268,6 +4431,9 @@ PostgresMain(int argc, char *argv[],
 			case 'X':
 			case EOF:
 
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin eof");
+				}
 				/*
 				 * Reset whereToSendOutput to prevent ereport from attempting
 				 * to send any more messages to client.
@@ -4283,11 +4449,17 @@ PostgresMain(int argc, char *argv[],
 				 * scenarios.
 				 */
 				proc_exit(0);
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("end eof");
+				}
 
 			case 'd':			/* copy data */
 			case 'c':			/* copy done */
 			case 'f':			/* copy fail */
 
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin copy");
+				}
 				/*
 				 * Accept but ignore these messages, per protocol spec; we
 				 * probably got here because a COPY failed, and the frontend
@@ -4296,6 +4468,10 @@ PostgresMain(int argc, char *argv[],
 				break;
 
 			default:
+
+				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin default");
+				}
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d",
