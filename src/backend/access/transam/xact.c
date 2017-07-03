@@ -1802,7 +1802,15 @@ static void
 StartTransaction(void)
 {
 
-	yj_BeginProfiling();
+	// yj_BeginProfiling();
+
+	if (yj_IsProfiling() == true) {
+		yj_InsertTimePoint("start transaction");
+	} else {
+		yj_BeginProfiling();
+		yj_InsertTimePoint("start transaction");
+	}
+
 	TransactionState s;
 	VirtualTransactionId vxid;
 

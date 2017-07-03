@@ -221,24 +221,27 @@ void yj_BeginProfiling() {
 }
 
 void yj_EndProfiling() {
-  if (yj_total_count_ % 2000 == 0) {
+  if (yj_total_count_ % 500 == 0) {
     struct timeval end_time;
 
     gettimeofday(&end_time, NULL);
 
     printf("=================================\n");
+    printf("txn count = %d\n", yj_total_count_);
+
+    printf("begin clock: %lf\n", yj_begin_time_.tv_sec * 1000.0 * 1000.0 + yj_begin_time_.tv_usec);
     for (int i = 0; i < yj_time_point_count_; ++i) {
       double diff = (yj_time_points_[i].time_.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
       diff += (yj_time_points_[i].time_.tv_usec - yj_begin_time_.tv_usec);
 
-      printf("point: %s, time: %lf us.\n", yj_time_points_[i].point_name_, diff);
+      printf("point: %s, time: %lf us, clock: %lf\n", yj_time_points_[i].point_name_, diff, yj_time_points_[i].time_.tv_sec * 1000.0 * 1000.0 + yj_time_points_[i].time_.tv_usec);
     }
 
     double diff = (end_time.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
     diff += (end_time.tv_usec - yj_begin_time_.tv_usec);
 
-    printf("yj time point count = %d\n", yj_time_point_count_);
-    printf("point: END, time: %lf us.\n", diff);
+    // printf("yj time point count = %d\n", yj_time_point_count_);
+    printf("point: END, time: %lf us, clock: %lf\n", diff, end_time.tv_sec * 1000.0 * 1000.0 + end_time.tv_usec);
 
   }
   yj_time_point_count_ = 0;
@@ -4139,6 +4142,9 @@ PostgresMain(int argc, char *argv[],
 					// printf("simple query...\n");
 					if (yj_IsProfiling() == true) {
 						yj_InsertTimePoint("begin simple query");
+					} else {
+						yj_BeginProfiling();
+						yj_InsertTimePoint("begin simple query");
 					}
 					const char *query_string;
 
@@ -4168,6 +4174,9 @@ PostgresMain(int argc, char *argv[],
 				{
 					// printf("parse...\n");
 					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("begin parse");
+					} else {
+						yj_BeginProfiling();
 						yj_InsertTimePoint("begin parse");
 					}
 
@@ -4209,6 +4218,9 @@ PostgresMain(int argc, char *argv[],
 				// printf("bind...\n");
 				if (yj_IsProfiling() == true) {
 					yj_InsertTimePoint("begin bind");
+				} else {
+					yj_BeginProfiling();
+					yj_InsertTimePoint("begin bind");
 				}
 
 
@@ -4234,6 +4246,9 @@ PostgresMain(int argc, char *argv[],
 				// printf("execute...\n");
 				{
 					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("begin execute");
+					} else {
+						yj_BeginProfiling();
 						yj_InsertTimePoint("begin execute");
 					}
 
@@ -4261,7 +4276,11 @@ PostgresMain(int argc, char *argv[],
 			case 'F':			/* fastpath function call */
 				if (yj_IsProfiling() == true) {
 					yj_InsertTimePoint("begin fastpath");
+				} else {
+					yj_BeginProfiling();
+					yj_InsertTimePoint("begin fastpath");
 				}
+				
 				// printf("fast path function call...\n");
 				forbidden_in_wal_sender(firstchar);
 
@@ -4302,6 +4321,9 @@ PostgresMain(int argc, char *argv[],
 				// printf("close...\n");
 				{
 					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint("begin close");
+					} else {
+						yj_BeginProfiling();
 						yj_InsertTimePoint("begin close");
 					}
 					int			close_type;
@@ -4355,6 +4377,9 @@ PostgresMain(int argc, char *argv[],
 				// printf("describe...\n");
 				if (yj_IsProfiling() == true) {
 					yj_InsertTimePoint("begin describe");
+				} else {
+					yj_BeginProfiling();
+					yj_InsertTimePoint("begin describe");
 				}
 
 				{
@@ -4396,6 +4421,9 @@ PostgresMain(int argc, char *argv[],
 			case 'H':			/* flush */
 				if (yj_IsProfiling() == true) {
 					yj_InsertTimePoint("begin flush");
+				} else {
+					yj_BeginProfiling();
+					yj_InsertTimePoint("begin flush");
 				}
 
 				pq_getmsgend(&input_message);
@@ -4412,6 +4440,9 @@ PostgresMain(int argc, char *argv[],
 				// printf("sync...\n");
 
 				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin sync");
+				} else {
+					yj_BeginProfiling();
 					yj_InsertTimePoint("begin sync");
 				}
 				pq_getmsgend(&input_message);
@@ -4432,6 +4463,9 @@ PostgresMain(int argc, char *argv[],
 			case EOF:
 
 				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin eof");
+				} else {
+					yj_BeginProfiling();
 					yj_InsertTimePoint("begin eof");
 				}
 				/*
@@ -4459,6 +4493,9 @@ PostgresMain(int argc, char *argv[],
 
 				if (yj_IsProfiling() == true) {
 					yj_InsertTimePoint("begin copy");
+				} else {
+					yj_BeginProfiling();
+					yj_InsertTimePoint("begin copy");
 				}
 				/*
 				 * Accept but ignore these messages, per protocol spec; we
@@ -4470,6 +4507,9 @@ PostgresMain(int argc, char *argv[],
 			default:
 
 				if (yj_IsProfiling() == true) {
+					yj_InsertTimePoint("begin default");
+				} else {
+					yj_BeginProfiling();
 					yj_InsertTimePoint("begin default");
 				}
 				ereport(FATAL,
