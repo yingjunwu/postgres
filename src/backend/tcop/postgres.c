@@ -171,7 +171,7 @@ struct yj_TimePoint {
 	char* point_name_;
 };
 
-#define yj_max_time_points_ 50
+#define yj_max_time_points_ 1000
 
 // static const int yj_max_time_points_ = 50;
 static int yj_total_count_ = 0;
@@ -212,16 +212,27 @@ static void log_disconnections(int code, Datum arg);
 
 
 void yj_BeginProfiling() {
+  
+	if (yj_is_profiling_ == true) {
+		return;
+	}
+
   ++yj_total_count_;
 
   gettimeofday(&yj_begin_time_, NULL);
 
   yj_time_point_count_ = 0;
   yj_is_profiling_ = true;
+
 }
 
 void yj_EndProfiling() {
-  if (yj_total_count_ % 500 == 0) {
+
+	if (yj_is_profiling_ == false) {
+		return;
+	}
+
+  // if (yj_total_count_ % 500 == 0) {
     struct timeval end_time;
 
     gettimeofday(&end_time, NULL);
@@ -230,7 +241,8 @@ void yj_EndProfiling() {
     printf("txn count = %d\n", yj_total_count_);
 
     printf("begin clock: %lf\n", yj_begin_time_.tv_sec * 1000.0 * 1000.0 + yj_begin_time_.tv_usec);
-    for (int i = 0; i < yj_time_point_count_; ++i) {
+    int i;
+    for (i = 0; i < yj_time_point_count_; ++i) {
       double diff = (yj_time_points_[i].time_.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
       diff += (yj_time_points_[i].time_.tv_usec - yj_begin_time_.tv_usec);
 
@@ -243,7 +255,7 @@ void yj_EndProfiling() {
     // printf("yj time point count = %d\n", yj_time_point_count_);
     printf("point: END, time: %lf us, clock: %lf\n", diff, end_time.tv_sec * 1000.0 * 1000.0 + end_time.tv_usec);
 
-  }
+  // }
   yj_time_point_count_ = 0;
   yj_is_profiling_ = false;
 }
@@ -259,6 +271,9 @@ void yj_InsertTimePoint(char* point_name) {
 	struct yj_TimePoint *time_point = &(yj_time_points_[yj_time_point_count_]);
 
 	gettimeofday(&(time_point->time_), NULL);
+
+
+
 	time_point->point_name_ = point_name;
 
   ++yj_time_point_count_;
@@ -1012,11 +1027,16 @@ exec_simple_query(const char *query_string)
 	 */
 	oldcontext = MemoryContextSwitchTo(MessageContext);
 
+	yj_InsertTimePoint("begin parse query");
+
 	/*
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
 	 */
 	parsetree_list = pg_parse_query(query_string);
+
+ 	yj_InsertTimePoint("end parse query");
+
 
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement(parsetree_list))
@@ -1108,11 +1128,18 @@ exec_simple_query(const char *query_string)
 		 */
 		oldcontext = MemoryContextSwitchTo(MessageContext);
 
+		yj_InsertTimePoint("begin analyze, rewrite, and plan");
+
 		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
 												NULL, 0, NULL);
 
+	 	yj_InsertTimePoint("end analyze and rewrite");
+
 		plantree_list = pg_plan_queries(querytree_list,
 										CURSOR_OPT_PARALLEL_OK, NULL);
+
+
+	 	yj_InsertTimePoint("end plan queries");
 
 		/* Done with the snapshot used for parsing/planning */
 		if (snapshot_set)
@@ -1121,6 +1148,8 @@ exec_simple_query(const char *query_string)
 		/* If we got a cancel signal in analysis or planning, quit */
 		CHECK_FOR_INTERRUPTS();
 
+
+	 	yj_InsertTimePoint("before create portal");
 		/*
 		 * Create unnamed portal to run the query or queries in. If there
 		 * already is one, silently drop it.
@@ -1145,6 +1174,8 @@ exec_simple_query(const char *query_string)
 		 * Start the portal.  No parameters here.
 		 */
 		PortalStart(portal, NULL, 0, InvalidSnapshot);
+
+	 	yj_InsertTimePoint("after portal start");
 
 		/*
 		 * Select the appropriate output format: text unless we are doing a
@@ -1180,6 +1211,9 @@ exec_simple_query(const char *query_string)
 		 */
 		MemoryContextSwitchTo(oldcontext);
 
+
+	 	yj_InsertTimePoint("before portal run");
+
 		/*
 		 * Run the portal to completion, and then drop it (and the receiver).
 		 */
@@ -1190,6 +1224,8 @@ exec_simple_query(const char *query_string)
 						 receiver,
 						 receiver,
 						 completionTag);
+
+	 	yj_InsertTimePoint("after portal run");
 
 		(*receiver->rDestroy) (receiver);
 
@@ -4139,13 +4175,7 @@ PostgresMain(int argc, char *argv[],
 		{
 			case 'Q':			/* simple query */
 				{
-					// printf("simple query...\n");
-					if (yj_IsProfiling() == true) {
-						yj_InsertTimePoint("begin simple query");
-					} else {
-						yj_BeginProfiling();
-						yj_InsertTimePoint("begin simple query");
-					}
+					
 					const char *query_string;
 
 					/* Set statement_timestamp() */
@@ -4153,6 +4183,17 @@ PostgresMain(int argc, char *argv[],
 
 					query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
+
+
+					char *query_str = malloc(100);
+					sprintf(query_str, "begin simple query: %s", query_string);
+					
+					if (yj_IsProfiling() == true) {
+						yj_InsertTimePoint(query_str);
+					} else {
+						yj_BeginProfiling();
+						yj_InsertTimePoint(query_str);
+					}
 
 					if (am_walsender)
 					{
