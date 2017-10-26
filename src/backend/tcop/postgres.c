@@ -698,14 +698,13 @@ List *
 pg_parse_query(const char *query_string)
 {
 	List	   *raw_parsetree_list;
-
 	TRACE_POSTGRESQL_QUERY_PARSE_START(query_string);
 
 	if (log_parser_stats)
 		ResetUsage();
-
+	yj_InsertTimePoint("begin raw parser");
 	raw_parsetree_list = raw_parser(query_string);
-
+	yj_InsertTimePoint("end raw parser");
 	if (log_parser_stats)
 		ShowUsage("PARSER STATISTICS");
 
@@ -752,8 +751,10 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 	if (log_parser_stats)
 		ResetUsage();
 
+	yj_InsertTimePoint("begin parse analyze");
 	query = parse_analyze(parsetree, query_string, paramTypes, numParams,
 						  queryEnv);
+	yj_InsertTimePoint("end parse analyze");
 
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
@@ -762,6 +763,7 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 	 * (2) Rewrite the queries, as necessary
 	 */
 	querytree_list = pg_rewrite_query(query);
+	yj_InsertTimePoint("end rewrite query");
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
