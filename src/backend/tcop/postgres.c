@@ -223,7 +223,6 @@ void yj_BeginProfiling() {
 
   yj_time_point_count_ = 0;
   yj_is_profiling_ = true;
-
 }
 
 void yj_EndProfiling() {
@@ -233,29 +232,35 @@ void yj_EndProfiling() {
 	}
 
   // if (yj_total_count_ % 500 == 0) {
+		char buf[100];
+		sprintf(buf, "/home/yingjunw/postgresql/profile_%d.txt", yj_begin_time_.tv_sec);
+    FILE *fp = fopen(buf, "w");
+    printf("filename = %s\n", buf);
+
     struct timeval end_time;
 
     gettimeofday(&end_time, NULL);
 
-    printf("=================================\n");
-    printf("txn count = %d\n", yj_total_count_);
+    fprintf(fp, "=================================\n");
+    fprintf(fp, "txn count = %d\n", yj_total_count_);
 
-    printf("begin clock: %lf\n", yj_begin_time_.tv_sec * 1000.0 * 1000.0 + yj_begin_time_.tv_usec);
+    fprintf(fp, "begin clock: %lf\n", yj_begin_time_.tv_sec * 1000.0 * 1000.0 + yj_begin_time_.tv_usec);
     int i;
     for (i = 0; i < yj_time_point_count_; ++i) {
       double diff = (yj_time_points_[i].time_.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
       diff += (yj_time_points_[i].time_.tv_usec - yj_begin_time_.tv_usec);
 
-      printf("point: %s, time: %lf us, clock: %lf\n", yj_time_points_[i].point_name_, diff, yj_time_points_[i].time_.tv_sec * 1000.0 * 1000.0 + yj_time_points_[i].time_.tv_usec);
+      fprintf(fp, "point: %s, time: %lf us, clock: %lf\n", yj_time_points_[i].point_name_, diff, yj_time_points_[i].time_.tv_sec * 1000.0 * 1000.0 + yj_time_points_[i].time_.tv_usec);
     }
 
     double diff = (end_time.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
     diff += (end_time.tv_usec - yj_begin_time_.tv_usec);
 
-    // printf("yj time point count = %d\n", yj_time_point_count_);
-    printf("point: END, time: %lf us, clock: %lf\n", diff, end_time.tv_sec * 1000.0 * 1000.0 + end_time.tv_usec);
+    fprintf(fp, "point: END, time: %lf us, clock: %lf\n", diff, end_time.tv_sec * 1000.0 * 1000.0 + end_time.tv_usec);
 
+    fclose(fp);
   // }
+
   yj_time_point_count_ = 0;
   yj_is_profiling_ = false;
 }
