@@ -51,7 +51,6 @@ raw_parser(const char *str)
 
 	/* Parse! */
 	yyresult = base_yyparse(yyscanner);
-
 	/* Clean up (release memory) */
 	scanner_finish(yyscanner);
 
