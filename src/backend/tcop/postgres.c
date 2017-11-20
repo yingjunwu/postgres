@@ -234,7 +234,7 @@ void yj_EndProfiling() {
   // if (yj_total_count_ % 500 == 0) {
 		char buf[100];
 		sprintf(buf, "/home/yingjunw/postgresql/profile_%d.txt", yj_begin_time_.tv_sec);
-    FILE *fp = fopen(buf, "w");
+    FILE *fp = fopen(buf, "a");
     printf("filename = %s\n", buf);
 
     struct timeval end_time;
@@ -4192,7 +4192,7 @@ PostgresMain(int argc, char *argv[],
 					pq_getmsgend(&input_message);
 
 
-					char *query_str = malloc(100);
+					char *query_str = malloc(2048);
 					sprintf(query_str, "begin simple query: %s", query_string);
 					
 					if (yj_IsProfiling() == true) {
