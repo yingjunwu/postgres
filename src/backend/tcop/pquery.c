@@ -703,7 +703,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	AssertArg(PortalIsValid(portal));
 
 	TRACE_POSTGRESQL_QUERY_EXECUTE_START();
-
+	yj_InsertTimePoint("in 706");
 	/* Initialize completion tag to empty string */
 	if (completionTag)
 		completionTag[0] = '\0';
@@ -714,7 +714,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		/* PORTAL_MULTI_QUERY logs its own stats per query */
 		ResetUsage();
 	}
-
+	yj_InsertTimePoint("in 717");
 	/*
 	 * Check for improper portal use, and mark portal active.
 	 */
@@ -723,7 +723,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	/* Set run_once flag.  Shouldn't be clear if previously set. */
 	Assert(!portal->run_once || run_once);
 	portal->run_once = run_once;
-
+	yj_InsertTimePoint("in 726");
 	/*
 	 * Set up global portal context pointers.
 	 *
@@ -753,6 +753,9 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 
 		MemoryContextSwitchTo(PortalContext);
 
+
+	yj_InsertTimePoint("in pg try");
+
 		switch (portal->strategy)
 		{
 			case PORTAL_ONE_SELECT:
@@ -760,6 +763,8 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 			case PORTAL_ONE_MOD_WITH:
 			case PORTAL_UTIL_SELECT:
 
+
+	yj_InsertTimePoint("in 767");
 				/*
 				 * If we have not yet run the command, do so, storing its
 				 * results in the portal's tuplestore.  But we don't do that
@@ -767,12 +772,12 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 				 */
 				if (portal->strategy != PORTAL_ONE_SELECT && !portal->holdStore)
 					FillPortalStore(portal, isTopLevel);
-
+	yj_InsertTimePoint("in 775");
 				/*
 				 * Now fetch desired portion of results.
 				 */
 				nprocessed = PortalRunSelect(portal, true, count, dest);
-
+	yj_InsertTimePoint("in 780");
 				/*
 				 * If the portal result contains a command tag and the caller
 				 * gave us a pointer to store it, copy it. Patch the "SELECT"
@@ -786,7 +791,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 					else
 						strcpy(completionTag, portal->commandTag);
 				}
-
+	yj_InsertTimePoint("in 794");
 				/* Mark portal not active */
 				portal->status = PORTAL_READY;
 
@@ -797,9 +802,11 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 				break;
 
 			case PORTAL_MULTI_QUERY:
+	yj_InsertTimePoint("in 805");
 				PortalRunMulti(portal, isTopLevel, false,
 							   dest, altdest, completionTag);
 
+	yj_InsertTimePoint("in 809");
 				/* Prevent portal's commands from being re-executed */
 				MarkPortalDone(portal);
 
@@ -818,7 +825,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	{
 		/* Uncaught error while executing portal: mark it dead */
 		MarkPortalFailed(portal);
-
+	yj_InsertTimePoint("in 827");
 		/* Restore global vars and propagate error */
 		if (saveMemoryContext == saveTopTransactionContext)
 			MemoryContextSwitchTo(TopTransactionContext);
@@ -834,7 +841,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
+	yj_InsertTimePoint("in 844");
 	if (saveMemoryContext == saveTopTransactionContext)
 		MemoryContextSwitchTo(TopTransactionContext);
 	else
@@ -849,6 +856,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)
 		ShowUsage("EXECUTOR STATISTICS");
 
+	yj_InsertTimePoint("in 859");
 	TRACE_POSTGRESQL_QUERY_EXECUTE_DONE();
 
 	return result;
@@ -881,7 +889,7 @@ PortalRunSelect(Portal portal,
 	QueryDesc  *queryDesc;
 	ScanDirection direction;
 	uint64		nprocessed;
-
+	yj_InsertTimePoint("in portal run 892");
 	/*
 	 * NB: queryDesc will be NULL if we are fetching from a held cursor or a
 	 * completed utility query; can't use it in that path.
@@ -890,7 +898,7 @@ PortalRunSelect(Portal portal,
 
 	/* Caller messed up if we have neither a ready query nor held data. */
 	Assert(queryDesc || portal->holdStore);
-
+	yj_InsertTimePoint("in portal run 901");
 	/*
 	 * Force the queryDesc destination to the right thing.  This supports
 	 * MOVE, for example, which will pass in dest = DestNone.  This is okay to
@@ -921,6 +929,7 @@ PortalRunSelect(Portal portal,
 		else
 			direction = ForwardScanDirection;
 
+	yj_InsertTimePoint("in portal run 932");
 		/* In the executor, zero count processes all rows */
 		if (count == FETCH_ALL)
 			count = 0;
@@ -929,24 +938,29 @@ PortalRunSelect(Portal portal,
 			nprocessed = RunFromStore(portal, direction, (uint64) count, dest);
 		else
 		{
+	yj_InsertTimePoint("in portal run 941");
 			PushActiveSnapshot(queryDesc->snapshot);
 			ExecutorRun(queryDesc, direction, (uint64) count,
 						portal->run_once);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
+	yj_InsertTimePoint("in portal run 946");
 		}
 
 		if (!ScanDirectionIsNoMovement(direction))
 		{
+	yj_InsertTimePoint("in portal run 952");
 			if (nprocessed > 0)
 				portal->atStart = false;		/* OK to go backward now */
 			if (count == 0 || nprocessed < (uint64) count)
 				portal->atEnd = true;	/* we retrieved 'em all */
 			portal->portalPos += nprocessed;
+	yj_InsertTimePoint("in portal run 958");
 		}
 	}
 	else
 	{
+	yj_InsertTimePoint("in portal run 963");
 		if (portal->cursorOptions & CURSOR_OPT_NO_SCROLL)
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -965,6 +979,7 @@ PortalRunSelect(Portal portal,
 		if (count == FETCH_ALL)
 			count = 0;
 
+	yj_InsertTimePoint("in portal run 981");
 		if (portal->holdStore)
 			nprocessed = RunFromStore(portal, direction, (uint64) count, dest);
 		else
@@ -976,6 +991,7 @@ PortalRunSelect(Portal portal,
 			PopActiveSnapshot();
 		}
 
+	yj_InsertTimePoint("in portal run 993");
 		if (!ScanDirectionIsNoMovement(direction))
 		{
 			if (nprocessed > 0 && portal->atEnd)
@@ -995,6 +1011,7 @@ PortalRunSelect(Portal portal,
 		}
 	}
 
+	yj_InsertTimePoint("in portal run 1014");
 	return nprocessed;
 }
 

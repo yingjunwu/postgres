@@ -307,6 +307,8 @@ void
 standard_ExecutorRun(QueryDesc *queryDesc,
 					 ScanDirection direction, uint64 count, bool execute_once)
 {
+
+	yj_InsertTimePoint("begin standard executor run");
 	EState	   *estate;
 	CmdType		operation;
 	DestReceiver *dest;
@@ -329,7 +331,7 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	/* Allow instrumentation of Executor overall runtime */
 	if (queryDesc->totaltime)
 		InstrStartNode(queryDesc->totaltime);
-
+	yj_InsertTimePoint("standard executor run 334");
 	/*
 	 * extract information from the query descriptor and the query feature.
 	 */
@@ -357,6 +359,7 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 			elog(ERROR, "can't re-execute query flagged for single execution");
 		queryDesc->already_executed = true;
 
+	yj_InsertTimePoint("standard executor run 362");
 		ExecutePlan(estate,
 					queryDesc->planstate,
 					queryDesc->plannedstmt->parallelModeNeeded,
@@ -366,6 +369,7 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 					direction,
 					dest,
 					execute_once);
+	yj_InsertTimePoint("standard executor run 372");
 	}
 
 	/*
@@ -1612,6 +1616,7 @@ ExecutePlan(EState *estate,
 			DestReceiver *dest,
 			bool execute_once)
 {
+	yj_InsertTimePoint("execute plan 1619");
 	TupleTableSlot *slot;
 	uint64		current_tuple_count;
 
@@ -1634,33 +1639,36 @@ ExecutePlan(EState *estate,
 	if (!execute_once || dest->mydest == DestIntoRel)
 		use_parallel_mode = false;
 
+	yj_InsertTimePoint("execute plan 1642");
 	if (use_parallel_mode)
 		EnterParallelMode();
-
+	yj_InsertTimePoint("execute plan 1645");
 	/*
 	 * Loop until we've processed the proper number of tuples from the plan.
 	 */
 	for (;;)
 	{
+	yj_InsertTimePoint("execute plan 1651");
 		/* Reset the per-output-tuple exprcontext */
 		ResetPerTupleExprContext(estate);
-
+	yj_InsertTimePoint("execute plan 1654");
 		/*
 		 * Execute the plan and obtain a tuple
 		 */
 		slot = ExecProcNode(planstate);
-
+	yj_InsertTimePoint("execute plan 1659");
 		/*
 		 * if the tuple is null, then we assume there is nothing more to
 		 * process so we just end the loop...
 		 */
 		if (TupIsNull(slot))
 		{
+	yj_InsertTimePoint("execute plan 1666");
 			/* Allow nodes to release or shut down resources. */
 			(void) ExecShutdownNode(planstate);
 			break;
 		}
-
+	yj_InsertTimePoint("execute plan 1669");
 		/*
 		 * If we have a junk filter, then project a new tuple with the junk
 		 * removed.
@@ -1671,7 +1679,7 @@ ExecutePlan(EState *estate,
 		 */
 		if (estate->es_junkFilter != NULL)
 			slot = ExecFilterJunk(estate->es_junkFilter, slot);
-
+	yj_InsertTimePoint("execute plan 1680");
 		/*
 		 * If we are supposed to send the tuple somewhere, do so. (In
 		 * practice, this is probably always the case at this point.)
@@ -1686,7 +1694,7 @@ ExecutePlan(EState *estate,
 			if (!((*dest->receiveSlot) (slot, dest)))
 				break;
 		}
-
+	yj_InsertTimePoint("execute plan 1695");
 		/*
 		 * Count tuples processed, if this is a SELECT.  (For other operation
 		 * types, the ModifyTable plan node must count the appropriate
@@ -1709,6 +1717,7 @@ ExecutePlan(EState *estate,
 		}
 	}
 
+	yj_InsertTimePoint("execute plan 1718");
 	if (use_parallel_mode)
 		ExitParallelMode();
 }
