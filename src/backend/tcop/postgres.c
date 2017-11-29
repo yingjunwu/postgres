@@ -244,19 +244,37 @@ void yj_EndProfiling() {
     fprintf(fp, "=================================\n");
     fprintf(fp, "txn count = %d\n", yj_total_count_);
 
-    fprintf(fp, "begin clock: %lf\n", yj_begin_time_.tv_sec * 1000.0 * 1000.0 + yj_begin_time_.tv_usec);
+    // fprintf(fp, "begin clock: %lf\n", yj_begin_time_.tv_sec * 1000.0 * 1000.0 + yj_begin_time_.tv_usec);
     int i;
     for (i = 0; i < yj_time_point_count_; ++i) {
-      double diff = (yj_time_points_[i].time_.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
-      diff += (yj_time_points_[i].time_.tv_usec - yj_begin_time_.tv_usec);
+      double elapsed = (yj_time_points_[i].time_.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
+      elapsed += (yj_time_points_[i].time_.tv_usec - yj_begin_time_.tv_usec);
 
-      fprintf(fp, "point: %s, time: %lf us, clock: %lf\n", yj_time_points_[i].point_name_, diff, yj_time_points_[i].time_.tv_sec * 1000.0 * 1000.0 + yj_time_points_[i].time_.tv_usec);
+      double diff = 0;
+      if (i == 0) {
+      	diff = elapsed;
+      } else {
+	      diff = (yj_time_points_[i].time_.tv_sec - yj_time_points_[i - 1].time_.tv_sec) * 1000.0 * 1000.0;
+	      diff += (yj_time_points_[i].time_.tv_usec - yj_time_points_[i - 1].time_.tv_usec);
+      }
+
+      // fprintf(fp, "point: %s, time: %lf us, clock: %lf\n", yj_time_points_[i].point_name_, diff, yj_time_points_[i].time_.tv_sec * 1000.0 * 1000.0 + yj_time_points_[i].time_.tv_usec);
+      fprintf(fp, "point: %s, elapsed: %lf us, diff: %lf us\n", yj_time_points_[i].point_name_, elapsed, diff);
     }
 
-    double diff = (end_time.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
-    diff += (end_time.tv_usec - yj_begin_time_.tv_usec);
+    double elapsed = (end_time.tv_sec - yj_begin_time_.tv_sec) * 1000.0 * 1000.0;
+    elapsed += (end_time.tv_usec - yj_begin_time_.tv_usec);
 
-    fprintf(fp, "point: END, time: %lf us, clock: %lf\n", diff, end_time.tv_sec * 1000.0 * 1000.0 + end_time.tv_usec);
+    double diff = 0;
+    if (i == 0) {
+    	diff = elapsed;
+    } else {
+      diff = (end_time.tv_sec - yj_time_points_[i - 1].time_.tv_sec) * 1000.0 * 1000.0;
+      diff += (end_time.tv_usec - yj_time_points_[i - 1].time_.tv_usec);
+    }    
+
+    // fprintf(fp, "point: END, time: %lf us, clock: %lf\n", diff, end_time.tv_sec * 1000.0 * 1000.0 + end_time.tv_usec);
+    fprintf(fp, "point: END, elapsed: %lf us, diff: %lf us\n", elapsed, diff);
 
     fclose(fp);
   // }
